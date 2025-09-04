@@ -1,6 +1,7 @@
 /**
  * 数据存储模块 - 管理所有数据的持久化存储
  * 修复版：支持云端SillyTavern的服务器端存储
+ * 优化版：移除定期同步，只在操作时立即保存
  */
 
 export class Storage {
@@ -19,10 +20,7 @@ export class Storage {
         // 初始化缓存
         this.loadCache();
         
-        // 定期同步到服务器（每30秒）
-        if (this.useServerStorage) {
-            setInterval(() => this.syncToServer(), 30000);
-        }
+        // 移除了定期同步！现在只在每次操作时立即保存
     }
     
     /**
@@ -57,7 +55,7 @@ export class Storage {
     }
     
     /**
-     * 保存数据 - 同时保存到本地和服务器
+     * 保存数据 - 同时保存到本地和服务器（立即保存）
      */
     async set(key, value) {
         try {
@@ -73,7 +71,7 @@ export class Storage {
                 console.warn(`[Storage] 本地存储失败，但会继续同步到服务器:`, localError.message);
             }
             
-            // 3. 如果在SillyTavern环境，同步到服务器
+            // 3. 如果在SillyTavern环境，立即同步到服务器
             if (this.useServerStorage) {
                 await this.saveToServer(key, value);
             }
@@ -90,7 +88,7 @@ export class Storage {
     }
     
     /**
-     * 保存到服务器
+     * 保存到服务器（立即执行）
      */
     async saveToServer(key, value) {
         if (!this.useServerStorage) return;
@@ -115,10 +113,10 @@ export class Storage {
                 timestamp: new Date().toISOString()
             };
             
-            // 调用SillyTavern的保存函数
+            // 立即调用SillyTavern的保存函数
             if (typeof saveSettingsDebounced === 'function') {
                 saveSettingsDebounced();
-                console.log(`[Storage] 数据已同步到服务器: ${key}`);
+                console.log(`[Storage] 数据已立即同步到服务器: ${key}`);
             }
         } catch (error) {
             console.error(`[Storage] 服务器保存失败:`, error);
@@ -209,7 +207,7 @@ export class Storage {
                 // 忽略本地存储错误
             }
             
-            // 3. 从服务器删除
+            // 3. 从服务器删除（立即执行）
             if (this.useServerStorage) {
                 await this.removeFromServer(key);
             }
@@ -226,7 +224,7 @@ export class Storage {
     }
     
     /**
-     * 从服务器删除
+     * 从服务器删除（立即执行）
      */
     async removeFromServer(key) {
         if (!this.useServerStorage) return;
@@ -238,7 +236,7 @@ export class Storage {
                 
                 if (typeof saveSettingsDebounced === 'function') {
                     saveSettingsDebounced();
-                    console.log(`[Storage] 已从服务器删除: ${key}`);
+                    console.log(`[Storage] 已立即从服务器删除: ${key}`);
                 }
             }
         } catch (error) {
@@ -287,7 +285,7 @@ export class Storage {
             
             console.log(`[Storage] 已清空 ${keysToRemove.length} 个本地存储项`);
             
-            // 3. 清空服务器数据
+            // 3. 清空服务器数据（立即执行）
             if (this.useServerStorage) {
                 await this.clearServerData();
             }
@@ -304,7 +302,7 @@ export class Storage {
     }
     
     /**
-     * 清空服务器数据
+     * 清空服务器数据（立即执行）
      */
     async clearServerData() {
         if (!this.useServerStorage) return;
@@ -319,7 +317,7 @@ export class Storage {
             
             if (typeof saveSettingsDebounced === 'function') {
                 saveSettingsDebounced();
-                console.log(`[Storage] 服务器数据已清空`);
+                console.log(`[Storage] 服务器数据已立即清空`);
             }
         } catch (error) {
             console.error(`[Storage] 清空服务器数据失败:`, error);
@@ -475,9 +473,9 @@ export class Storage {
     }
     
     /**
-     * 同步所有数据到服务器
+     * 手动批量同步到服务器（仅在导入数据等特殊情况使用）
      */
-    async syncToServer() {
+    async forceSyncToServer() {
         if (!this.useServerStorage) return;
         
         try {
@@ -503,10 +501,10 @@ export class Storage {
             
             if (typeof saveSettingsDebounced === 'function') {
                 saveSettingsDebounced();
-                console.log(`[Storage] 定期同步完成，同步了 ${Object.keys(allData).length} 项数据`);
+                console.log(`[Storage] 手动批量同步完成，同步了 ${Object.keys(allData).length} 项数据`);
             }
         } catch (error) {
-            console.error(`[Storage] 同步失败:`, error);
+            console.error(`[Storage] 批量同步失败:`, error);
         }
     }
     
@@ -545,13 +543,8 @@ export class Storage {
                 await new Promise(resolve => setTimeout(resolve, 100));
             }
             
-            // 导入数据
+            // 导入数据（会自动保存到服务器）
             await this.setMultiple(importData.data);
-            
-            // 立即同步到服务器
-            if (this.useServerStorage) {
-                await this.syncToServer();
-            }
             
             const count = Object.keys(importData.data).length;
             console.log(`[Storage] 成功导入 ${count} 项数据`);
