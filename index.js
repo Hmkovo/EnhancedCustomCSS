@@ -505,8 +505,79 @@ class EnhancedCustomCSSPlus {
         console.log('[EnhancedCSS] 手动清理主题');
         this.core.clearAll();
         setTimeout(() => this.applyCurrentConfiguration(), 100);
+      },
+      
+      // 完全卸载（清理所有云端数据）
+      uninstall: async () => {
+        if (confirm('⚠️ 警告：这将永久删除所有字体和设置数据！\n\n确定要完全卸载吗？')) {
+          if (confirm('再次确认：所有云端保存的字体和设置都将被永久删除，无法恢复！')) {
+            await this.completeUninstall();
+          }
+        }
       }
     };
+  }
+
+  /**
+   * 完全卸载 - 清理所有数据
+   */
+  async completeUninstall() {
+    console.log(`[${this.extensionName}] 开始完全卸载...`);
+    
+    try {
+      // 1. 清理所有DOM元素和样式
+      this.core.clearAll();
+      
+      // 2. 清理所有本地和云端存储的数据
+      await this.storage.clear();
+      
+      // 3. 如果在SillyTavern环境，确保云端数据被完全清除
+      if (window.extension_settings && window.extension_settings[this.extensionName]) {
+        // 完全删除扩展的设置对象
+        delete window.extension_settings[this.extensionName];
+        
+        // 立即保存到服务器
+        if (typeof saveSettingsDebounced === 'function') {
+          saveSettingsDebounced();
+          console.log(`[${this.extensionName}] 云端数据已完全清除`);
+        }
+      }
+      
+      // 4. 清理所有localStorage中可能的残留
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.includes(this.extensionName) || key.includes('EnhancedCSS'))) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(key => localStorage.removeItem(key));
+      
+      // 5. 停止所有监听器
+      if (this.themeObserver) this.themeObserver.disconnect();
+      if (this.textareaObserver) this.textareaObserver.disconnect();
+      if (this.currentTextarea && this.textareaHandler) {
+        this.currentTextarea.removeEventListener('input', this.textareaHandler);
+      }
+      
+      // 6. 移除UI
+      const uiContainer = document.querySelector('#EnhancedCustomCSSPlus_settings');
+      if (uiContainer) {
+        uiContainer.remove();
+      }
+      
+      alert('✅ Enhanced Custom CSS Plus 已完全卸载！\n\n所有数据已从云端和本地清除。\n\n如需重新使用，安装后将是全新开始。');
+      
+      console.log(`[${this.extensionName}] 完全卸载成功`);
+      
+      // 7. 清理全局对象
+      delete window.EnhancedCSS;
+      delete window.EnhancedCustomCSSPlus;
+      
+    } catch (error) {
+      console.error(`[${this.extensionName}] 卸载失败:`, error);
+      alert('❌ 卸载过程中出现错误，请查看控制台。');
+    }
   }
 
   /**
