@@ -308,16 +308,22 @@ export class Storage {
         if (!this.useServerStorage) return;
         
         try {
-            // 完全重置扩展设置
-            window.extension_settings[this.namespace] = {
-                version: '2.0.0',
-                data: {},
-                clearedAt: new Date().toISOString()
-            };
+            // 方法1：完全删除扩展的设置对象（推荐）
+            if (window.extension_settings && window.extension_settings[this.namespace]) {
+                delete window.extension_settings[this.namespace];
+                console.log(`[Storage] 已完全删除服务器上的扩展数据`);
+            }
+            
+            // 备用方法：如果无法删除，则重置为空对象
+            // window.extension_settings[this.namespace] = {
+            //     version: '2.0.0',
+            //     data: {},
+            //     clearedAt: new Date().toISOString()
+            // };
             
             if (typeof saveSettingsDebounced === 'function') {
                 saveSettingsDebounced();
-                console.log(`[Storage] 服务器数据已立即清空`);
+                console.log(`[Storage] 服务器数据已立即清空并保存`);
             }
         } catch (error) {
             console.error(`[Storage] 清空服务器数据失败:`, error);
