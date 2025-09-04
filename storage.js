@@ -1,6 +1,6 @@
 /**
  * 数据存储模块 - 管理所有数据的持久化存储
- * 使用localStorage进行本地存储，提供统一的存储接口
+ * 修复版：支持云端SillyTavern的服务器端存储
  */
 
 export class Storage {
@@ -10,34 +10,73 @@ export class Storage {
         this.cache = new Map();
         this.listeners = new Map();
         
+        // 标记是否使用服务器存储
+        this.useServerStorage = false;
+        
+        // 检测是否在SillyTavern环境中
+        this.checkEnvironment();
+        
         // 初始化缓存
         this.loadCache();
+        
+        // 定期同步到服务器（每30秒）
+        if (this.useServerStorage) {
+            setInterval(() => this.syncToServer(), 30000);
+        }
+    }
+    
+    /**
+     * 检测运行环境
+     */
+    checkEnvironment() {
+        // 检查是否存在SillyTavern的全局对象
+        if (typeof window !== 'undefined' && 
+            window.extension_settings && 
+            typeof saveSettingsDebounced === 'function') {
+            this.useServerStorage = true;
+            
+            // 初始化扩展设置对象
+            if (!window.extension_settings[this.namespace]) {
+                window.extension_settings[this.namespace] = {
+                    version: '2.0.0',
+                    data: {}
+                };
+            }
+            
+            console.log(`[Storage] 检测到SillyTavern环境，启用服务器同步存储`);
+        } else {
+            console.log(`[Storage] 未检测到SillyTavern环境，使用本地存储`);
+        }
     }
     
     /**
      * 生成存储键名
-     * @param {string} key - 原始键名
-     * @returns {string} 带命名空间的键名
      */
     getKey(key) {
         return `${this.prefix}${key}`;
     }
     
     /**
-     * 保存数据
-     * @param {string} key - 键名
-     * @param {*} value - 数据值
-     * @returns {Promise<void>}
+     * 保存数据 - 同时保存到本地和服务器
      */
     async set(key, value) {
-        const fullKey = this.getKey(key);
-        
         try {
-            const serialized = JSON.stringify(value);
-            localStorage.setItem(fullKey, serialized);
-            
-            // 更新缓存
+            // 1. 保存到缓存
             this.cache.set(key, value);
+            
+            // 2. 保存到localStorage（作为本地缓存）
+            const fullKey = this.getKey(key);
+            try {
+                const serialized = JSON.stringify(value);
+                localStorage.setItem(fullKey, serialized);
+            } catch (localError) {
+                console.warn(`[Storage] 本地存储失败，但会继续同步到服务器:`, localError.message);
+            }
+            
+            // 3. 如果在SillyTavern环境，同步到服务器
+            if (this.useServerStorage) {
+                await this.saveToServer(key, value);
+            }
             
             // 触发变更事件
             this.emit('changed', { key, value });
@@ -46,71 +85,134 @@ export class Storage {
             return Promise.resolve();
         } catch (error) {
             console.error(`[Storage] 保存失败 (${key}):`, error);
-            
-            // 如果是存储空间不足
-            if (error.name === 'QuotaExceededError') {
-                // 尝试清理旧数据
-                this.cleanup();
-                
-                // 重试一次
-                try {
-                    const serialized = JSON.stringify(value);
-                    localStorage.setItem(fullKey, serialized);
-                    this.cache.set(key, value);
-                    return Promise.resolve();
-                } catch (retryError) {
-                    return Promise.reject(new Error('存储空间不足'));
-                }
-            }
-            
             return Promise.reject(error);
         }
     }
     
     /**
-     * 读取数据
-     * @param {string} key - 键名
-     * @param {*} defaultValue - 默认值
-     * @returns {Promise<*>}
+     * 保存到服务器
      */
-    async get(key, defaultValue = null) {
-        // 先检查缓存
-        if (this.cache.has(key)) {
-            return Promise.resolve(this.cache.get(key));
-        }
-        
-        const fullKey = this.getKey(key);
+    async saveToServer(key, value) {
+        if (!this.useServerStorage) return;
         
         try {
-            const serialized = localStorage.getItem(fullKey);
-            
-            if (serialized === null) {
-                return Promise.resolve(defaultValue);
+            // 确保扩展设置对象存在
+            if (!window.extension_settings[this.namespace]) {
+                window.extension_settings[this.namespace] = {
+                    version: '2.0.0',
+                    data: {}
+                };
             }
             
-            const value = JSON.parse(serialized);
+            // 保存数据
+            if (!window.extension_settings[this.namespace].data) {
+                window.extension_settings[this.namespace].data = {};
+            }
             
-            // 更新缓存
-            this.cache.set(key, value);
+            // 存储数据和时间戳
+            window.extension_settings[this.namespace].data[key] = {
+                value: value,
+                timestamp: new Date().toISOString()
+            };
             
-            return Promise.resolve(value);
+            // 调用SillyTavern的保存函数
+            if (typeof saveSettingsDebounced === 'function') {
+                saveSettingsDebounced();
+                console.log(`[Storage] 数据已同步到服务器: ${key}`);
+            }
         } catch (error) {
-            console.error(`[Storage] 读取失败 (${key}):`, error);
-            return Promise.resolve(defaultValue);
+            console.error(`[Storage] 服务器保存失败:`, error);
         }
     }
     
     /**
-     * 删除数据
-     * @param {string} key - 键名
-     * @returns {Promise<void>}
+     * 读取数据 - 优先从服务器读取
      */
-    async remove(key) {
+    async get(key, defaultValue = null) {
+        // 1. 先检查缓存
+        if (this.cache.has(key)) {
+            return Promise.resolve(this.cache.get(key));
+        }
+        
+        // 2. 如果在SillyTavern环境，尝试从服务器读取
+        if (this.useServerStorage) {
+            const serverData = this.getFromServer(key);
+            if (serverData !== null) {
+                this.cache.set(key, serverData);
+                
+                // 同时更新本地存储
+                const fullKey = this.getKey(key);
+                try {
+                    localStorage.setItem(fullKey, JSON.stringify(serverData));
+                } catch (e) {
+                    // 忽略本地存储错误
+                }
+                
+                return Promise.resolve(serverData);
+            }
+        }
+        
+        // 3. 从localStorage读取（作为后备）
         const fullKey = this.getKey(key);
+        try {
+            const serialized = localStorage.getItem(fullKey);
+            if (serialized !== null) {
+                const value = JSON.parse(serialized);
+                this.cache.set(key, value);
+                
+                // 如果服务器端没有，同步上去
+                if (this.useServerStorage) {
+                    this.saveToServer(key, value);
+                }
+                
+                return Promise.resolve(value);
+            }
+        } catch (error) {
+            console.warn(`[Storage] 本地读取失败 (${key}):`, error);
+        }
+        
+        return Promise.resolve(defaultValue);
+    }
+    
+    /**
+     * 从服务器读取数据
+     */
+    getFromServer(key) {
+        if (!this.useServerStorage) return null;
         
         try {
-            localStorage.removeItem(fullKey);
+            if (window.extension_settings[this.namespace] && 
+                window.extension_settings[this.namespace].data &&
+                window.extension_settings[this.namespace].data[key]) {
+                return window.extension_settings[this.namespace].data[key].value;
+            }
+        } catch (error) {
+            console.error(`[Storage] 服务器读取失败:`, error);
+        }
+        
+        return null;
+    }
+    
+    /**
+     * 删除数据 - 同时从本地和服务器删除
+     */
+    async remove(key) {
+        try {
+            // 1. 从缓存删除
             this.cache.delete(key);
+            
+            // 2. 从localStorage删除
+            const fullKey = this.getKey(key);
+            try {
+                localStorage.removeItem(fullKey);
+            } catch (e) {
+                // 忽略本地存储错误
+            }
+            
+            // 3. 从服务器删除
+            if (this.useServerStorage) {
+                await this.removeFromServer(key);
+            }
             
             // 触发删除事件
             this.emit('removed', key);
@@ -124,36 +226,76 @@ export class Storage {
     }
     
     /**
+     * 从服务器删除
+     */
+    async removeFromServer(key) {
+        if (!this.useServerStorage) return;
+        
+        try {
+            if (window.extension_settings[this.namespace] && 
+                window.extension_settings[this.namespace].data) {
+                delete window.extension_settings[this.namespace].data[key];
+                
+                if (typeof saveSettingsDebounced === 'function') {
+                    saveSettingsDebounced();
+                    console.log(`[Storage] 已从服务器删除: ${key}`);
+                }
+            }
+        } catch (error) {
+            console.error(`[Storage] 服务器删除失败:`, error);
+        }
+    }
+    
+    /**
      * 检查键是否存在
-     * @param {string} key - 键名
-     * @returns {Promise<boolean>}
      */
     async has(key) {
+        // 优先检查服务器
+        if (this.useServerStorage) {
+            const serverData = this.getFromServer(key);
+            if (serverData !== null) return true;
+        }
+        
+        // 检查本地
         const fullKey = this.getKey(key);
         return Promise.resolve(localStorage.getItem(fullKey) !== null);
     }
     
     /**
-     * 清空所有数据
-     * @returns {Promise<void>}
+     * 清空所有数据 - 彻底清理
      */
     async clear() {
         try {
-            // 获取所有相关键
-            const keys = this.getAllKeys();
+            console.log(`[Storage] 开始清空所有数据...`);
             
-            // 逐个删除
-            keys.forEach(key => {
+            // 1. 清空缓存
+            this.cache.clear();
+            
+            // 2. 清空localStorage中的相关数据
+            const keysToRemove = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && key.startsWith(this.prefix)) {
+                    keysToRemove.push(key);
+                }
+            }
+            
+            // 批量删除（避免在循环中修改localStorage）
+            keysToRemove.forEach(key => {
                 localStorage.removeItem(key);
             });
             
-            // 清空缓存
-            this.cache.clear();
+            console.log(`[Storage] 已清空 ${keysToRemove.length} 个本地存储项`);
+            
+            // 3. 清空服务器数据
+            if (this.useServerStorage) {
+                await this.clearServerData();
+            }
             
             // 触发清空事件
             this.emit('cleared', null);
             
-            console.log(`[Storage] 已清空所有 ${this.namespace} 数据`);
+            console.log(`[Storage] 数据清空完成`);
             return Promise.resolve();
         } catch (error) {
             console.error(`[Storage] 清空失败:`, error);
@@ -162,28 +304,77 @@ export class Storage {
     }
     
     /**
+     * 清空服务器数据
+     */
+    async clearServerData() {
+        if (!this.useServerStorage) return;
+        
+        try {
+            // 完全重置扩展设置
+            window.extension_settings[this.namespace] = {
+                version: '2.0.0',
+                data: {},
+                clearedAt: new Date().toISOString()
+            };
+            
+            if (typeof saveSettingsDebounced === 'function') {
+                saveSettingsDebounced();
+                console.log(`[Storage] 服务器数据已清空`);
+            }
+        } catch (error) {
+            console.error(`[Storage] 清空服务器数据失败:`, error);
+        }
+    }
+    
+    /**
      * 获取所有键名
-     * @returns {Array<string>}
      */
     getAllKeys() {
-        const keys = [];
+        const keys = new Set();
+        
+        // 1. 从服务器获取
+        if (this.useServerStorage && 
+            window.extension_settings[this.namespace] && 
+            window.extension_settings[this.namespace].data) {
+            Object.keys(window.extension_settings[this.namespace].data).forEach(key => {
+                keys.add(this.getKey(key));
+            });
+        }
+        
+        // 2. 从localStorage获取
         for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
             if (key && key.startsWith(this.prefix)) {
-                keys.push(key);
+                keys.add(key);
             }
         }
-        return keys;
+        
+        return Array.from(keys);
     }
     
     /**
      * 获取所有数据
-     * @returns {Promise<Object>}
      */
     async getAll() {
         const data = {};
-        const keys = this.getAllKeys();
         
+        // 优先从服务器获取
+        if (this.useServerStorage && 
+            window.extension_settings[this.namespace] && 
+            window.extension_settings[this.namespace].data) {
+            
+            const serverData = window.extension_settings[this.namespace].data;
+            for (const [key, item] of Object.entries(serverData)) {
+                if (item && item.value !== undefined) {
+                    data[key] = item.value;
+                }
+            }
+            
+            return Promise.resolve(data);
+        }
+        
+        // 从localStorage获取
+        const keys = this.getAllKeys();
         for (const fullKey of keys) {
             const key = fullKey.replace(this.prefix, '');
             try {
@@ -199,8 +390,6 @@ export class Storage {
     
     /**
      * 批量设置数据
-     * @param {Object} data - 数据对象
-     * @returns {Promise<void>}
      */
     async setMultiple(data) {
         const errors = [];
@@ -223,16 +412,30 @@ export class Storage {
     /**
      * 加载缓存
      */
-    loadCache() {
-        const keys = this.getAllKeys();
+    async loadCache() {
+        // 优先从服务器加载
+        if (this.useServerStorage) {
+            await this.loadFromServer();
+        }
+        
+        // 补充从localStorage加载
+        const keys = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith(this.prefix)) {
+                keys.push(key);
+            }
+        }
         
         keys.forEach(fullKey => {
             const key = fullKey.replace(this.prefix, '');
-            try {
-                const value = JSON.parse(localStorage.getItem(fullKey));
-                this.cache.set(key, value);
-            } catch (error) {
-                console.warn(`[Storage] 缓存加载失败 (${key})`);
+            if (!this.cache.has(key)) {
+                try {
+                    const value = JSON.parse(localStorage.getItem(fullKey));
+                    this.cache.set(key, value);
+                } catch (error) {
+                    console.warn(`[Storage] 缓存加载失败 (${key})`);
+                }
             }
         });
         
@@ -240,50 +443,84 @@ export class Storage {
     }
     
     /**
-     * 清理旧数据（当存储空间不足时）
+     * 从服务器加载数据到缓存
      */
-    cleanup() {
-        // 获取所有数据并按时间戳排序
-        const allData = [];
-        const keys = this.getAllKeys();
+    async loadFromServer() {
+        if (!this.useServerStorage) return;
         
-        keys.forEach(fullKey => {
-            const key = fullKey.replace(this.prefix, '');
-            try {
-                const value = JSON.parse(localStorage.getItem(fullKey));
+        try {
+            if (window.extension_settings[this.namespace] && 
+                window.extension_settings[this.namespace].data) {
                 
-                // 假设某些数据有时间戳
-                const timestamp = value.timestamp || value.addedAt || 0;
-                allData.push({ key, timestamp, size: localStorage.getItem(fullKey).length });
-            } catch (error) {
-                // 损坏的数据直接删除
-                localStorage.removeItem(fullKey);
+                const serverData = window.extension_settings[this.namespace].data;
+                for (const [key, item] of Object.entries(serverData)) {
+                    if (item && item.value !== undefined) {
+                        this.cache.set(key, item.value);
+                        
+                        // 同时更新本地存储作为缓存
+                        const fullKey = this.getKey(key);
+                        try {
+                            localStorage.setItem(fullKey, JSON.stringify(item.value));
+                        } catch (e) {
+                            // 忽略本地存储错误
+                        }
+                    }
+                }
+                
+                console.log(`[Storage] 从服务器加载了 ${Object.keys(serverData).length} 项数据`);
             }
-        });
-        
-        // 按时间戳排序（旧的在前）
-        allData.sort((a, b) => a.timestamp - b.timestamp);
-        
-        // 删除最旧的20%数据
-        const deleteCount = Math.floor(allData.length * 0.2);
-        for (let i = 0; i < deleteCount; i++) {
-            this.remove(allData[i].key);
+        } catch (error) {
+            console.error(`[Storage] 服务器加载失败:`, error);
         }
+    }
+    
+    /**
+     * 同步所有数据到服务器
+     */
+    async syncToServer() {
+        if (!this.useServerStorage) return;
         
-        console.log(`[Storage] 清理了 ${deleteCount} 项旧数据`);
+        try {
+            // 获取所有缓存的数据
+            const allData = {};
+            this.cache.forEach((value, key) => {
+                allData[key] = {
+                    value: value,
+                    timestamp: new Date().toISOString()
+                };
+            });
+            
+            // 更新服务器数据
+            if (!window.extension_settings[this.namespace]) {
+                window.extension_settings[this.namespace] = {
+                    version: '2.0.0',
+                    data: {}
+                };
+            }
+            
+            window.extension_settings[this.namespace].data = allData;
+            window.extension_settings[this.namespace].lastSync = new Date().toISOString();
+            
+            if (typeof saveSettingsDebounced === 'function') {
+                saveSettingsDebounced();
+                console.log(`[Storage] 定期同步完成，同步了 ${Object.keys(allData).length} 项数据`);
+            }
+        } catch (error) {
+            console.error(`[Storage] 同步失败:`, error);
+        }
     }
     
     /**
      * 导出所有数据
-     * @returns {Promise<string>} JSON字符串
      */
     async export() {
         const data = await this.getAll();
         
         const exportData = {
             namespace: this.namespace,
-            version: '1.0.0',
+            version: '2.0.0',
             exportDate: new Date().toISOString(),
+            dataSource: this.useServerStorage ? 'server' : 'local',
             data: data
         };
         
@@ -292,9 +529,6 @@ export class Storage {
     
     /**
      * 导入数据
-     * @param {string} jsonString - JSON字符串
-     * @param {boolean} merge - 是否合并
-     * @returns {Promise<number>} 导入的项数
      */
     async import(jsonString, merge = true) {
         try {
@@ -307,10 +541,17 @@ export class Storage {
             // 如果不合并，先清空
             if (!merge) {
                 await this.clear();
+                // 等待清空操作完成
+                await new Promise(resolve => setTimeout(resolve, 100));
             }
             
             // 导入数据
             await this.setMultiple(importData.data);
+            
+            // 立即同步到服务器
+            if (this.useServerStorage) {
+                await this.syncToServer();
+            }
             
             const count = Object.keys(importData.data).length;
             console.log(`[Storage] 成功导入 ${count} 项数据`);
@@ -324,23 +565,32 @@ export class Storage {
     
     /**
      * 获取存储使用情况
-     * @returns {Object} 使用情况统计
      */
     getUsageStats() {
         let totalSize = 0;
         let itemCount = 0;
-        const keys = this.getAllKeys();
         
-        keys.forEach(fullKey => {
-            const value = localStorage.getItem(fullKey);
-            if (value) {
-                totalSize += value.length;
-                itemCount++;
-            }
-        });
+        // 计算服务器数据大小
+        if (this.useServerStorage && 
+            window.extension_settings[this.namespace] && 
+            window.extension_settings[this.namespace].data) {
+            const serverData = JSON.stringify(window.extension_settings[this.namespace].data);
+            totalSize += serverData.length;
+            itemCount = Object.keys(window.extension_settings[this.namespace].data).length;
+        } else {
+            // 计算本地数据大小
+            const keys = this.getAllKeys();
+            keys.forEach(fullKey => {
+                const value = localStorage.getItem(fullKey);
+                if (value) {
+                    totalSize += value.length;
+                    itemCount++;
+                }
+            });
+        }
         
-        // 估算总存储空间（通常是5-10MB）
-        const estimatedTotal = 5 * 1024 * 1024; // 5MB
+        // 估算总存储空间
+        const estimatedTotal = this.useServerStorage ? 10 * 1024 * 1024 : 5 * 1024 * 1024;
         const usagePercent = (totalSize / estimatedTotal) * 100;
         
         return {
@@ -349,14 +599,13 @@ export class Storage {
             totalSizeFormatted: this.formatSize(totalSize),
             estimatedTotal: estimatedTotal,
             estimatedTotalFormatted: this.formatSize(estimatedTotal),
-            usagePercent: usagePercent.toFixed(2) + '%'
+            usagePercent: usagePercent.toFixed(2) + '%',
+            storageType: this.useServerStorage ? '服务器存储' : '本地存储'
         };
     }
     
     /**
      * 格式化文件大小
-     * @param {number} bytes - 字节数
-     * @returns {string} 格式化的大小
      */
     formatSize(bytes) {
         if (bytes === 0) return '0 B';
@@ -370,9 +619,6 @@ export class Storage {
     
     /**
      * 监听事件
-     * @param {string} event - 事件名
-     * @param {Function} callback - 回调函数
-     * @returns {Function} 取消监听的函数
      */
     on(event, callback) {
         if (!this.listeners.has(event)) {
@@ -392,8 +638,6 @@ export class Storage {
     
     /**
      * 取消监听
-     * @param {string} event - 事件名
-     * @param {Function} callback - 回调函数
      */
     off(event, callback) {
         const callbacks = this.listeners.get(event);
@@ -404,8 +648,6 @@ export class Storage {
     
     /**
      * 触发事件
-     * @param {string} event - 事件名
-     * @param {*} data - 事件数据
      */
     emit(event, data) {
         const callbacks = this.listeners.get(event);
@@ -422,6 +664,7 @@ export class Storage {
     
     /**
      * 监听localStorage变化（跨标签页同步）
+     * 注意：在使用服务器存储时，这个功能主要用于本地缓存更新
      */
     watchStorageChanges() {
         window.addEventListener('storage', (e) => {
