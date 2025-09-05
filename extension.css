@@ -293,6 +293,13 @@ select.compact {
   gap: 3px;
 }
 
+/* 当前字体置顶时的特殊样式 */
+.font-item.current:first-child {
+  border-top: 2px solid var(--SmartThemeQuoteColor);
+  margin-top: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
 /* 字体项 - 折叠式设计 */
 .font-item {
   background: rgba(0, 0, 0, 0.1);
