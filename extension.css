@@ -1,4 +1,8 @@
 /* Enhanced Custom CSS Plus - 扩展样式文件 */
+/* 修改记录：
+ * - 2025-09-05: 添加字体启用开关和标签管理器样式
+ * - 2025-09-05: 优化布局，添加字体库折叠区域，精简样式
+ */
 
 /* 主容器样式 - 移除上下间距 */
 #EnhancedCustomCSSPlus_settings {
@@ -123,6 +127,26 @@ pre.code-block {
   border-radius: 4px;
 }
 
+/* 字体启用开关区域 - 修改：精简样式，移除高亮背景 */
+.font-enable-section-compact {
+  padding: 6px 0;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--SmartThemeBorderColor);
+}
+
+.font-enable-section-compact .checkbox_label {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.9em;
+}
+
+.font-enable-section-compact .hint-inline {
+  margin-left: 8px;
+  font-size: 0.8em;
+  opacity: 0.7;
+  font-style: italic;
+}
+
 /* 字体管理部分 - 折叠设计 */
 .font-add-section {
   background: rgba(0, 0, 0, 0.1);
@@ -149,6 +173,40 @@ pre.code-block {
 }
 
 .font-add-content {
+  padding: 12px;
+}
+
+/* 字体库折叠区域 - 新增样式 */
+.font-warehouse-section {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 4px;
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+
+.font-warehouse-header {
+  padding: 10px 12px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  user-select: none;
+  background: rgba(var(--SmartThemeQuoteColor-rgb), 0.1);
+  border: 1px solid var(--SmartThemeQuoteColor);
+}
+
+.font-warehouse-header:hover {
+  background: rgba(var(--SmartThemeQuoteColor-rgb), 0.15);
+}
+
+.font-warehouse-header h4 {
+  margin: 0;
+  font-size: 0.95em;
+  font-weight: bold;
+  color: var(--SmartThemeQuoteColor);
+}
+
+.font-warehouse-content {
   padding: 12px;
 }
 
@@ -502,6 +560,111 @@ select.compact {
   opacity: 0.8;
 }
 
+/* 标签管理器区域 - 修改：减少padding，优化布局 */
+.tag-manager-section-compact {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 4px;
+  margin-top: 10px;
+  overflow: hidden;
+}
+
+.tag-manager-header {
+  padding: 8px 12px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  user-select: none;
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.tag-manager-header:hover {
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.tag-manager-header h4 {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9em;
+}
+
+.tag-manager-content-compact {
+  padding: 8px;
+}
+
+.tag-manager-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* 标签管理项 - 修改：紧凑布局，类似字体项 */
+.tag-manager-item-compact {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 8px;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 3px;
+  transition: background 0.2s;
+  font-size: 0.85em;
+}
+
+.tag-manager-item-compact:hover {
+  background: rgba(var(--SmartThemeQuoteColor-rgb), 0.1);
+}
+
+.tag-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+}
+
+.tag-name {
+  font-weight: bold;
+  font-size: 0.9em;
+  color: var(--SmartThemeQuoteColor);
+}
+
+.tag-usage {
+  font-size: 0.8em;
+  opacity: 0.7;
+}
+
+/* 标签删除按钮 - 修改：稍微大一点，但不换行 */
+.tag-delete-btn-compact {
+  padding: 4px 8px;
+  background: transparent;
+  border: 1px solid var(--SmartThemeBorderColor);
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 0.75em;
+  opacity: 0.8;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.tag-delete-btn-compact:hover {
+  background: #ff4444;
+  border-color: #ff4444;
+  color: white;
+  opacity: 1;
+}
+
+.tag-manager-empty {
+  text-align: center;
+  padding: 20px;
+  opacity: 0.6;
+}
+
+.tag-manager-empty p {
+  margin: 0;
+  font-size: 0.9em;
+}
+
 /* 空状态 */
 .font-empty-state {
   text-align: center;
@@ -526,6 +689,11 @@ select.compact {
   opacity: 0.7;
   margin: 4px 0;
   font-style: italic;
+}
+
+.hint-inline {
+  display: inline;
+  margin: 0 0 0 8px;
 }
 
 /* 工具箱 - 优化布局 */
@@ -627,6 +795,18 @@ select.compact {
     padding: 5px 8px;
   }
 
+  /* 字体启用区域手机端 */
+  .font-enable-section-compact .hint-inline {
+    display: block;
+    margin-left: 24px;
+    margin-top: 2px;
+  }
+
+  /* 字体库标题手机端 */
+  .font-warehouse-header h4 {
+    font-size: 0.85em;
+  }
+
   /* 手机端字体项优化 */
   .font-item-main {
     padding: 5px 6px;
@@ -688,5 +868,32 @@ select.compact {
   .existing-tags {
     max-height: 150px;
     overflow-y: auto;
+  }
+
+  /* 标签管理器手机端优化 - 保持单行显示 */
+  .tag-manager-item-compact {
+    padding: 6px;
+    font-size: 0.8em;
+  }
+
+  .tag-info {
+    gap: 6px;
+  }
+
+  .tag-name {
+    font-size: 0.85em;
+  }
+
+  .tag-usage {
+    font-size: 0.75em;
+  }
+
+  .tag-delete-btn-compact {
+    padding: 3px 6px;
+    font-size: 0.7em;
+  }
+
+  .tag-delete-btn-compact i {
+    font-size: 0.85em;
   }
 }
