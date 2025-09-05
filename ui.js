@@ -1,6 +1,11 @@
 /**
  * UI界面模块 - 创建和管理扩展的用户界面
  * 实现分页式设置面板，字体管理界面，拖拽排序等功能
+ * 
+ * 修改记录：
+ * - 2025-09-05: 添加独立的字体可用开关
+ * - 2025-09-05: 添加标签管理功能区域
+ * - 2025-09-05: 更名为"毛球点心铺"，字体列表折叠化，优化布局
  */
 
 export class UI {
@@ -18,7 +23,9 @@ export class UI {
       fontViewMode: 'list', // list, grid
       fontAddExpanded: false, // 字体添加区域展开状态
       expandedFonts: new Set(), // 展开的字体项
-      importMergeMode: true // 导入模式：true=合并，false=覆盖
+      importMergeMode: true, // 导入模式：true=合并，false=覆盖
+      tagManagerExpanded: false, // 标签管理区域展开状态
+      fontListExpanded: true // 字体库展开状态 - 新增
     };
   }
 
@@ -69,11 +76,11 @@ export class UI {
     container.id = 'EnhancedCustomCSSPlus_settings';
     container.className = 'extension_settings';
 
-    // 创建HTML结构
+    // 创建HTML结构 - 修改标题
     container.innerHTML = `
             <div class="inline-drawer">
                 <div class="inline-drawer-toggle inline-drawer-header">
-                    <b>Enhanced Custom CSS Plus</b>
+                    <b>˚₊·ฅ 毛球点心铺 ฅ·₊˚</b>
                     <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
                 </div>
                 <div class="inline-drawer-content">
@@ -177,10 +184,20 @@ EnhancedCSS.addElement('.selector', 'div', {
 
   /**
    * 创建字体管理标签页内容
+   * 修改：优化布局，添加字体库折叠栏
    */
   createFontsTabContent() {
     return `
             <div class="enhanced-section">
+                <!-- 字体功能开关 - 修改：布局优化 -->
+                <div class="font-enable-section-compact">
+                    <label class="checkbox_label">
+                        <input type="checkbox" id="font-enabled" checked>
+                        <span>启用字体功能</span>
+                        <span class="hint-inline">关闭后将使用系统默认字体设置</span>
+                    </label>
+                </div>
+                
                 <!-- 字体添加区域（可折叠） -->
                 <div class="font-add-section">
                     <div class="font-add-header" id="font-add-toggle">
@@ -229,17 +246,42 @@ body {
                     </div>
                 </div>
                 
-                <!-- 字体列表 -->
-                <div class="font-list-container">
-                    <div id="font-list" class="font-list">
-                        <!-- 动态生成的字体项 -->
+                <!-- 字体库（可折叠） - 新增折叠容器 -->
+                <div class="font-warehouse-section">
+                    <div class="font-warehouse-header" id="font-warehouse-toggle">
+                        <h4>˚₊·ฅ 字体小仓库 ฅ·₊˚</h4>
+                        <i class="fa fa-chevron-up" id="font-warehouse-icon"></i>
                     </div>
-                    
-                    <!-- 空状态提示 -->
-                    <div class="font-empty-state" style="display: none;">
-                        <i class="fa fa-font fa-2x"></i>
-                        <p>还没有添加任何字体</p>
-                        <p class="hint">点击上方"添加新字体"开始使用</p>
+                    <div class="font-warehouse-content" id="font-warehouse-content">
+                        <!-- 字体列表 -->
+                        <div class="font-list-container">
+                            <div id="font-list" class="font-list">
+                                <!-- 动态生成的字体项 -->
+                            </div>
+                            
+                            <!-- 空状态提示 -->
+                            <div class="font-empty-state" style="display: none;">
+                                <i class="fa fa-font fa-2x"></i>
+                                <p>还没有添加任何字体</p>
+                                <p class="hint">点击上方"添加新字体"开始使用</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 标签管理区域 - 修改：优化padding -->
+                <div class="tag-manager-section-compact">
+                    <div class="tag-manager-header" id="tag-manager-toggle">
+                        <h4><i class="fa fa-tags"></i> 标签管理</h4>
+                        <i class="fa fa-chevron-down" id="tag-manager-icon"></i>
+                    </div>
+                    <div class="tag-manager-content-compact" id="tag-manager-content" style="display: none;">
+                        <div id="tag-manager-list" class="tag-manager-list">
+                            <!-- 动态生成的标签列表 -->
+                        </div>
+                        <div class="tag-manager-empty" style="display: none;">
+                            <p class="hint">暂无标签</p>
+                        </div>
                     </div>
                 </div>
                 
@@ -292,11 +334,14 @@ body {
   createAboutTabContent() {
     return `
             <div class="enhanced-section">
-                <h4><i class="fa fa-info-circle"></i> 关于 Enhanced Custom CSS Plus</h4>
+                <h4><i class="fa fa-info-circle"></i> 关于 毛球点心铺</h4>
                 
                 <div class="about-content">
                     <p><strong>版本：</strong> 2.0.0</p>
-                    <p><strong>作者：</strong> SGTY</p>
+                    <p><strong>作者：</strong> 山光＆潭影 </p>
+                    <p><strong>扩展名：</strong> 和小伙伴@我叫丁春秋 一起取名 </p>
+                    <p><strong>说明：</strong> 两人需求的自用产物，暂无公开意向 </p>
+                    <p><strong>₍˄. ̫.˄₎⟆</strong> 好耶毛茸茸!! </p>
                     <p><strong>功能：</strong></p>
                     <ul>
                         <li>» JavaScript代码执行</li>
@@ -309,7 +354,7 @@ body {
                     </ul>
                     
                     <div class="about-actions">
-                        <a href="https://github.com/Hmkovo/enhanced-custom-css" target="_blank" class="menu_button">
+                        <a href="https://github.com/Hmkovo/EnhancedCustomCSS" target="_blank" class="menu_button">
                             <i class="fab fa-github"></i> GitHub
                         </a>
                         <button id="reset-settings" class="menu_button danger">
@@ -361,6 +406,7 @@ body {
     // 如果切换到字体标签页，刷新字体列表
     if (tabName === 'fonts') {
       this.refreshFontList();
+      this.refreshTagManager(); // 刷新标签管理器
     }
   }
 
@@ -419,8 +465,32 @@ body {
 
   /**
    * 绑定字体管理事件
+   * 修改：添加字体库折叠事件
    */
   bindFontEvents() {
+    // 字体功能启用开关
+    const fontEnabledCheckbox = document.getElementById('font-enabled');
+    if (fontEnabledCheckbox) {
+      // 初始化状态
+      fontEnabledCheckbox.checked = this.extension.fontManager.fontEnabled !== false;
+
+      fontEnabledCheckbox.addEventListener('change', async (e) => {
+        const enabled = e.target.checked;
+        await this.extension.fontManager.setFontEnabled(enabled);
+
+        // 如果禁用字体功能，移除当前应用的字体
+        if (!enabled) {
+          this.extension.fontManager.clearAppliedFont();
+        } else {
+          // 如果启用字体功能，应用当前选中的字体
+          const currentFont = this.extension.fontManager.getCurrentFont();
+          if (currentFont) {
+            this.extension.fontManager.applyFont(currentFont);
+          }
+        }
+      });
+    }
+
     // 折叠/展开添加字体区域
     const toggleBtn = document.getElementById('font-add-toggle');
     if (toggleBtn) {
@@ -436,6 +506,46 @@ body {
           content.style.display = 'none';
           icon.className = 'fa fa-chevron-down';
           this.uiState.fontAddExpanded = false;
+        }
+      });
+    }
+
+    // 字体库折叠/展开 - 新增
+    const warehouseToggle = document.getElementById('font-warehouse-toggle');
+    if (warehouseToggle) {
+      warehouseToggle.addEventListener('click', () => {
+        const content = document.getElementById('font-warehouse-content');
+        const icon = document.getElementById('font-warehouse-icon');
+
+        if (content.style.display === 'none') {
+          content.style.display = 'block';
+          icon.className = 'fa fa-chevron-up';
+          this.uiState.fontListExpanded = true;
+          this.refreshFontList(); // 展开时刷新列表
+        } else {
+          content.style.display = 'none';
+          icon.className = 'fa fa-chevron-down';
+          this.uiState.fontListExpanded = false;
+        }
+      });
+    }
+
+    // 标签管理器折叠/展开
+    const tagManagerToggle = document.getElementById('tag-manager-toggle');
+    if (tagManagerToggle) {
+      tagManagerToggle.addEventListener('click', () => {
+        const content = document.getElementById('tag-manager-content');
+        const icon = document.getElementById('tag-manager-icon');
+
+        if (content.style.display === 'none') {
+          content.style.display = 'block';
+          icon.className = 'fa fa-chevron-up';
+          this.uiState.tagManagerExpanded = true;
+          this.refreshTagManager();
+        } else {
+          content.style.display = 'none';
+          icon.className = 'fa fa-chevron-down';
+          this.uiState.tagManagerExpanded = false;
         }
       });
     }
@@ -493,6 +603,10 @@ body {
     this.extension.fontManager.on('fontAdded', () => this.refreshFontList());
     this.extension.fontManager.on('fontRemoved', () => this.refreshFontList());
     this.extension.fontManager.on('fontUpdated', () => this.refreshFontList());
+    this.extension.fontManager.on('tagsChanged', () => {
+      this.refreshTagManager();
+      this.updateTagFilter();
+    });
   }
 
   /**
@@ -678,6 +792,62 @@ body {
   }
 
   /**
+   * 刷新标签管理器
+   * 修改：优化布局和显示
+   */
+  refreshTagManager() {
+    const tagManagerList = document.getElementById('tag-manager-list');
+    const tagManagerEmpty = document.querySelector('.tag-manager-empty');
+
+    if (!tagManagerList) return;
+
+    const tags = Array.from(this.extension.fontManager.tags);
+
+    if (tags.length === 0) {
+      tagManagerList.innerHTML = '';
+      if (tagManagerEmpty) tagManagerEmpty.style.display = 'block';
+    } else {
+      if (tagManagerEmpty) tagManagerEmpty.style.display = 'none';
+
+      // 统计每个标签的使用次数
+      const tagUsage = {};
+      tags.forEach(tag => {
+        tagUsage[tag] = 0;
+        this.extension.fontManager.fonts.forEach(font => {
+          if (font.tags && font.tags.includes(tag)) {
+            tagUsage[tag]++;
+          }
+        });
+      });
+
+      // 生成标签管理项 - 修改：优化布局
+      tagManagerList.innerHTML = tags.map(tag => `
+        <div class="tag-manager-item-compact">
+          <div class="tag-info">
+            <span class="tag-name">${tag}</span>
+            <span class="tag-usage">${tagUsage[tag]} 个</span>
+          </div>
+          <button class="tag-delete-btn-compact" data-tag="${tag}" title="删除标签">
+            <i class="fa fa-trash"></i>
+          </button>
+        </div>
+      `).join('');
+
+      // 绑定删除标签事件
+      document.querySelectorAll('.tag-delete-btn-compact').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          const tagToDelete = e.currentTarget.dataset.tag;
+          if (confirm(`确定要删除标签 "${tagToDelete}" 吗？\n这将从所有字体中移除该标签。`)) {
+            await this.extension.fontManager.deleteTag(tagToDelete);
+            this.refreshTagManager();
+            this.refreshFontList();
+          }
+        });
+      });
+    }
+  }
+
+  /**
    * 创建字体项HTML
    */
   createFontItem(font) {
@@ -718,7 +888,7 @@ body {
                         <i class="fa fa-chevron-${isExpanded ? 'up' : 'down'} expand-icon"></i>
                         <span class="font-item-name">
                             ${font.displayName || font.name}
-                            ${isCurrent ? ' <span class="current-badge">✓</span>' : ''}
+                            ${isCurrent ? ' <span class="current-badge">✔</span>' : ''}
                         </span>
                         <div class="font-item-tags">
                             ${tagsHtml}
