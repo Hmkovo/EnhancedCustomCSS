@@ -733,6 +733,7 @@ body {
 
   /**
    * 刷新字体列表
+   * 修改：2025-09-05 添加当前字体置顶功能
    */
   refreshFontList() {
     const fontList = document.getElementById('font-list');
@@ -766,6 +767,20 @@ body {
           return 0;
       }
     });
+
+    // 当前字体置顶 - 新增功能：2025-09-05
+    const currentFontName = this.extension.fontManager.currentFont;
+    if (currentFontName) {
+      // 找到当前字体的索引
+      const currentFontIndex = fonts.findIndex(font => font.name === currentFontName);
+
+      // 如果找到了当前字体，把它移到数组最前面
+      if (currentFontIndex > 0) {  // 如果已经在第一位就不需要移动
+        const currentFont = fonts.splice(currentFontIndex, 1)[0];
+        fonts.unshift(currentFont);
+        console.log('[UI] 当前字体已置顶:', currentFontName);
+      }
+    }
 
     // 显示空状态或字体列表
     if (fonts.length === 0) {
