@@ -6,6 +6,7 @@
  * - 2025-09-05: 添加字体功能启用/禁用状态管理
  * - 2025-09-05: 添加删除标签功能
  * - 2025-09-05: 修复字体功能开关逻辑，禁用时不允许设置当前字体
+ * - 2025-09-05: 修复currentFont云端同步问题，确保字体选择能正确保存
  */
 
 export class FontManager {
@@ -21,7 +22,7 @@ export class FontManager {
     this.tags = new Set();
     this.currentTag = 'all'; // 当前筛选的标签
 
-    // 字体功能启用状态 - 新增
+    // 字体功能启用状态
     this.fontEnabled = true;
 
     // 事件监听器
@@ -30,28 +31,29 @@ export class FontManager {
 
   /**
    * 初始化字体管理器
+   * 修改：2025-09-05 修复currentFont加载逻辑，优先从fonts数据中读取
    */
   async init() {
     // 加载保存的字体
     await this.loadFonts();
 
-    // 加载字体启用状态 - 新增
+    // 加载字体启用状态
     const savedFontEnabled = await this.storage.get('fontEnabled');
     if (savedFontEnabled !== undefined) {
       this.fontEnabled = savedFontEnabled;
     }
 
-    // 加载当前字体设置
-    const currentFontName = await this.storage.get('currentFont');
-    if (currentFontName && this.fonts.has(currentFontName)) {
-      this.currentFont = currentFontName;
-
-      // 如果字体功能启用，应用字体 - 新增
-      if (this.fontEnabled) {
-        const currentFont = this.fonts.get(currentFontName);
-        if (currentFont) {
-          this.applyFont(currentFont);
-        }
+    // 修复：确保currentFont正确加载
+    // 优先使用单独保存的currentFont，如果没有则使用fonts数据中的
+    const savedCurrentFont = await this.storage.get('currentFont');
+    if (savedCurrentFont && this.fonts.has(savedCurrentFont)) {
+      this.currentFont = savedCurrentFont;
+    }
+    // 如果currentFont有效且字体功能启用，应用字体
+    if (this.currentFont && this.fontEnabled) {
+      const currentFontData = this.fonts.get(this.currentFont);
+      if (currentFontData) {
+        this.applyFont(currentFontData);
       }
     }
 
@@ -59,7 +61,7 @@ export class FontManager {
   }
 
   /**
-   * 设置字体功能启用状态 - 修改：2025-09-05 增加状态切换时的处理逻辑
+   * 设置字体功能启用状态
    * @param {boolean} enabled - 是否启用字体功能
    */
   async setFontEnabled(enabled) {
@@ -84,7 +86,7 @@ export class FontManager {
   }
 
   /**
-   * 应用字体到页面 - 新增方法
+   * 应用字体到页面
    * @param {Object} font - 字体对象
    */
   applyFont(font) {
@@ -122,7 +124,7 @@ export class FontManager {
   }
 
   /**
-   * 清除应用的字体 - 新增方法
+   * 清除应用的字体
    */
   clearAppliedFont() {
     const existingStyle = document.getElementById('enhanced-font-style');
@@ -133,7 +135,7 @@ export class FontManager {
   }
 
   /**
-   * 删除标签 - 新增方法
+   * 删除标签
    * @param {string} tagToDelete - 要删除的标签
    */
   async deleteTag(tagToDelete) {
@@ -207,7 +209,7 @@ export class FontManager {
       url: url,
       fontFamily: fontFamily,
       fontId: fontId,
-      css: input, // 保存原始CSS - 新增
+      css: input, // 保存原始CSS
       tags: [],
       order: Date.now(), // 排序顺序
       addedAt: new Date().toISOString(),
@@ -268,6 +270,8 @@ export class FontManager {
       // 如果是当前字体，更新引用
       if (this.currentFont === fontName) {
         this.currentFont = updates.name;
+        // 修复：同步保存currentFont
+        await this.storage.set('currentFont', this.currentFont);
       }
     } else {
       this.fonts.set(fontName, { ...font, ...updates });
@@ -276,7 +280,7 @@ export class FontManager {
     // 更新标签集合
     if (updates.tags) {
       this.updateTagsList();
-      // 触发标签变化事件 - 新增
+      // 触发标签变化事件
       this.emit('tagsChanged', { action: 'updated', font: fontName });
     }
 
@@ -302,7 +306,9 @@ export class FontManager {
     // 如果删除的是当前字体，清除选择和应用的样式
     if (this.currentFont === fontName) {
       this.currentFont = null;
-      this.clearAppliedFont(); // 清除应用的字体 - 新增
+      // 修复：同步清除currentFont
+      await this.storage.remove('currentFont');
+      this.clearAppliedFont();
       this.emit('fontChanged', null);
     }
 
@@ -319,31 +325,33 @@ export class FontManager {
   }
 
   /**
-   * 设置当前字体 - 修改：2025-09-05 增加字体功能启用状态检查
+   * 设置当前字体
+   * 修改：2025-09-05 改进逻辑，即使字体功能禁用也保存用户选择
    * @param {string} fontName - 字体名称
    */
   async setCurrentFont(fontName) {
-    // 检查字体功能是否启用
-    if (!this.fontEnabled) {
-      console.warn('[FontManager] 字体功能已禁用，无法设置当前字体');
-      // 可以选择性地触发一个事件通知UI
-      this.emit('fontSelectionBlocked', { reason: 'disabled', fontName });
-      return false;
-    }
-
     if (!this.fonts.has(fontName)) {
       console.warn('[FontManager] 字体不存在:', fontName);
       return false;
     }
 
-    // 设置当前字体
+    // 保存当前字体选择（无论字体功能是否启用）
     this.currentFont = fontName;
+    
+    // 修复：确保currentFont被单独保存到云端
     await this.storage.set('currentFont', fontName);
+    
+    // 同时在saveFonts中也会保存（双重保险）
+    await this.saveFonts();
 
-    // 应用字体（applyFont内部会再次检查fontEnabled）
-    const font = this.fonts.get(fontName);
-    if (font) {
-      this.applyFont(font);
+    // 只有在字体功能启用时才应用字体
+    if (this.fontEnabled) {
+      const font = this.fonts.get(fontName);
+      if (font) {
+        this.applyFont(font);
+      }
+    } else {
+      console.log('[FontManager] 字体功能已禁用，已保存选择但不应用字体:', fontName);
     }
 
     // 触发事件
@@ -445,7 +453,7 @@ export class FontManager {
       exportDate: new Date().toISOString(),
       fonts: Array.from(this.fonts.values()),
       currentFont: this.currentFont,
-      fontEnabled: this.fontEnabled, // 导出字体启用状态 - 新增
+      fontEnabled: this.fontEnabled,
       tags: Array.from(this.tags)
     };
 
@@ -493,9 +501,11 @@ export class FontManager {
       // 设置当前字体
       if (data.currentFont && this.fonts.has(data.currentFont)) {
         this.currentFont = data.currentFont;
+        // 修复：确保导入后currentFont被保存
+        await this.storage.set('currentFont', this.currentFont);
       }
 
-      // 导入字体启用状态 - 新增
+      // 导入字体启用状态
       if (data.fontEnabled !== undefined) {
         this.fontEnabled = data.fontEnabled;
         await this.storage.set('fontEnabled', this.fontEnabled);
@@ -506,7 +516,7 @@ export class FontManager {
 
       // 触发事件
       this.emit('fontsImported', { count: imported, total: data.fonts.length });
-      this.emit('tagsChanged', { action: 'imported' }); // 新增
+      this.emit('tagsChanged', { action: 'imported' });
 
       console.log(`[FontManager] 导入完成，成功导入 ${imported}/${data.fonts.length} 个字体`);
       return imported;
@@ -543,25 +553,32 @@ export class FontManager {
       }
     });
 
-    // 触发标签变化事件 - 新增
+    // 触发标签变化事件
     this.emit('tagsChanged', { action: 'refresh' });
   }
 
   /**
    * 保存字体到存储
+   * 修改：2025-09-05 确保currentFont同时保存在fonts数据中
    */
   async saveFonts() {
     const data = {
       fonts: Array.from(this.fonts.entries()),
       tags: Array.from(this.tags),
-      currentFont: this.currentFont
+      currentFont: this.currentFont  // 在fonts数据中也保存currentFont
     };
 
     await this.storage.set('fonts', data);
+    
+    // 修复：如果有currentFont，确保它也被单独保存（双重保险）
+    if (this.currentFont) {
+      await this.storage.set('currentFont', this.currentFont);
+    }
   }
 
   /**
    * 从存储加载字体
+   * 修改：2025-09-05 改进加载逻辑，处理currentFont
    */
   async loadFonts() {
     const data = await this.storage.get('fonts');
@@ -577,10 +594,16 @@ export class FontManager {
         this.tags = new Set(data.tags);
       }
 
-      // 恢复当前字体
+      // 恢复当前字体（从fonts数据中）
       if (data.currentFont) {
         this.currentFont = data.currentFont;
       }
+    }
+    
+    // 修复：尝试从单独的currentFont键读取（兼容性）
+    const separateCurrentFont = await this.storage.get('currentFont');
+    if (separateCurrentFont && this.fonts.has(separateCurrentFont)) {
+      this.currentFont = separateCurrentFont;
     }
   }
 
