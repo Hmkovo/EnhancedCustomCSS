@@ -5,6 +5,7 @@
  * 修改记录：
  * - 2025-09-05: 添加字体功能启用/禁用状态管理
  * - 2025-09-05: 添加删除标签功能
+ * - 2025-09-05: 修复字体功能开关逻辑，禁用时不允许设置当前字体
  */
 
 export class FontManager {
@@ -58,12 +59,23 @@ export class FontManager {
   }
 
   /**
-   * 设置字体功能启用状态 - 新增方法
+   * 设置字体功能启用状态 - 修改：2025-09-05 增加状态切换时的处理逻辑
    * @param {boolean} enabled - 是否启用字体功能
    */
   async setFontEnabled(enabled) {
     this.fontEnabled = enabled;
     await this.storage.set('fontEnabled', enabled);
+
+    // 如果禁用字体功能，清除应用的字体
+    if (!enabled) {
+      this.clearAppliedFont();
+    } else if (this.currentFont) {
+      // 如果启用字体功能，且有当前选中的字体，重新应用
+      const font = this.fonts.get(this.currentFont);
+      if (font) {
+        this.applyFont(font);
+      }
+    }
 
     // 触发事件
     this.emit('fontEnabledChanged', enabled);
@@ -307,24 +319,31 @@ export class FontManager {
   }
 
   /**
-   * 设置当前字体
+   * 设置当前字体 - 修改：2025-09-05 增加字体功能启用状态检查
    * @param {string} fontName - 字体名称
    */
   async setCurrentFont(fontName) {
+    // 检查字体功能是否启用
+    if (!this.fontEnabled) {
+      console.warn('[FontManager] 字体功能已禁用，无法设置当前字体');
+      // 可以选择性地触发一个事件通知UI
+      this.emit('fontSelectionBlocked', { reason: 'disabled', fontName });
+      return false;
+    }
+
     if (!this.fonts.has(fontName)) {
       console.warn('[FontManager] 字体不存在:', fontName);
       return false;
     }
 
+    // 设置当前字体
     this.currentFont = fontName;
     await this.storage.set('currentFont', fontName);
 
-    // 如果字体功能启用，应用字体 - 修改
-    if (this.fontEnabled) {
-      const font = this.fonts.get(fontName);
-      if (font) {
-        this.applyFont(font);
-      }
+    // 应用字体（applyFont内部会再次检查fontEnabled）
+    const font = this.fonts.get(fontName);
+    if (font) {
+      this.applyFont(font);
     }
 
     // 触发事件
